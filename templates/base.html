@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Squid Log Analyzer - DGE{% endblock %}</title>
+    
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="../static/css/bootstrap.min.css">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="../static/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="../static/css/custom.css">  
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-chart-line"></i> Squid Log Analyzer - DGE
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+				    <li class="nav-item">
+                        <a class="nav-link" href="../index.html">
+                            <i class="fas fa-arrow-left"></i> Regresar
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#summary">
+                            <i class="fas fa-info-circle"></i> Resumen
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#top-users">
+                            <i class="fas fa-users"></i> Usuarios
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#top-domains">
+                            <i class="fas fa-globe"></i> Dominios
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#status-codes">
+                            <i class="fas fa-exclamation-triangle"></i> Códigos
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Main Content -->
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+    
+    <!-- Footer -->
+    <footer class="bg-light py-4 mt-5">
+        <div class="container text-center">
+            <p class="mb-0 text-muted">
+                <i class="fas fa-chart-line"></i> Squid Log Analyzer by Maxwell
+                <span class="mx-2">|</span>
+                <i class="far fa-calendar-alt"></i> Generado el: {{ generation_time }}
+            </p>
+        </div>
+    </footer>
+    
+    <script src="../static/js/jquery.min.js"></script>
+    <script src="../static/js/bootstrap.bundle.min.js"></script>
+    <script src="../static/js/chart.min.js"></script>
+    <script src="../static/js/custom.js"></script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

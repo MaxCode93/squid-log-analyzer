@@ -1,0 +1,210 @@
+/* Custom styles for Squid Log Analyzer */
+
+/* General styles */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #333;
+    background-color: #f8f9fa;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Card styles */
+.card {
+    border-radius: 0.5rem;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    margin-bottom: 1.5rem;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.card-header {
+    border-radius: 0.5rem 0.5rem 0 0 !important;
+    font-weight: 600;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Table styles */
+.table {
+    margin-bottom: 0;
+    transition: color 0.3s ease;
+}
+
+.table th {
+    font-weight: 600;
+    background-color: #f8f9fa;
+    transition: background-color 0.3s ease;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+/* Sort indicators for tables */
+th.sort-asc::after {
+    content: " ▲";
+    color: #007bff;
+}
+
+th.sort-desc::after {
+    content: " ▼";
+    color: #007bff;
+}
+
+/* Navbar styles */
+.navbar {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+/* Dark mode */
+.dark-mode {
+    background-color: #121212;
+    color: #e0e0e0;
+}
+
+.dark-mode .card {
+    background-color: #1e1e1e;
+    border-color: #2d2d2d;
+}
+
+.dark-mode .card-header {
+    background-color: #2d2d2d !important;
+    border-color: #2d2d2d;
+    color: #ffffff;
+}
+
+.dark-mode .bg-light {
+    background-color: #1e1e1e !important;
+}
+
+.dark-mode .text-muted {
+    color: #adb5bd !important;
+}
+
+.dark-mode .table {
+    color: #e0e0e0;
+}
+
+.dark-mode .table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.dark-mode .table-hover tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.075);
+}
+
+.dark-mode .table-primary, 
+.dark-mode .table-primary > th, 
+.dark-mode .table-primary > td {
+    background-color: #2d2d2d;
+}
+
+.dark-mode .table th {
+    background-color: #2d2d2d;
+    color: #ffffff;
+}
+
+.dark-mode footer {
+    background-color: #1e1e1e !important;
+    color: #e0e0e0;
+}
+
+.dark-mode .btn-outline-secondary {
+    color: #adb5bd;
+    border-color: #adb5bd;
+}
+
+.dark-mode .btn-outline-secondary:hover {
+    color: #121212;
+    background-color: #adb5bd;
+}
+
+.dark-mode .form-control {
+    background-color: #2d2d2d;
+    border-color: #444;
+    color: #e0e0e0;
+}
+
+.dark-mode .input-group-text {
+    background-color: #3d3d3d;
+    border-color: #444;
+    color: #e0e0e0;
+}
+
+.dark-mode .nav-link {
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.dark-mode .nav-link:hover {
+    color: rgba(255, 255, 255, 1);
+}
+
+.dark-mode .navbar-dark .navbar-nav .nav-link {
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.dark-mode .navbar-dark .navbar-nav .nav-link:hover {
+    color: rgba(255, 255, 255, 1);
+}
+
+/* Print styles */
+@media print {
+    .navbar, footer, .btn, .input-group {
+        display: none !important;
+    }
+    
+    body {
+        background-color: white !important;
+        color: black !important;
+    }
+    
+    .card {
+        break-inside: avoid;
+        box-shadow: none !important;
+        border: 1px solid #dee2e6 !important;
+        background-color: white !important;
+    }
+    
+    .card-header {
+        background-color: #f8f9fa !important;
+        color: black !important;
+    }
+    
+    .table {
+        color: black !important;
+    }
+    
+    .container {
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+}
+
+/* Animations */
+.fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .display-6 {
+        font-size: 1.5rem;
+    }
+    
+    h1 {
+        font-size: 1.75rem;
+    }
+    
+    h2 {
+        font-size: 1.5rem;
+    }
+}
