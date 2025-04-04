@@ -298,10 +298,10 @@ class SquidAnalyzerGUI(tk.Tk):
         """Muestra información sobre la aplicación."""
         messagebox.showinfo(
             "Acerca de",
-            "Squid Log Analyzer\n\n"
+            "Squid Log Analyzer(SLAM)\n\n"
             "Una herramienta para analizar logs de Squid Proxy.\n\n"
-            "Versión: 1.0\n"
-            "© 2023 - Todos los derechos reservados"
+            "Versión: 1.1.1\n"
+            "© 2025 - Todos los derechos reservados"
         )
 
 if __name__ == "__main__":

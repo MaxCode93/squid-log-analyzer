@@ -1,4 +1,3 @@
-
 """
 Configuración para Squid Log Analyzer.
 """
@@ -14,7 +13,7 @@ REPORTS_DIR = "/var/www/slam"
 # Asegurar que los directorios existan
 for directory in [TEMPLATES_DIR, STATIC_DIR]:
     os.makedirs(directory, exist_ok=True)
-os.makedirs(REPORTS_DIR, exist_ok=True)  # Solo crear REPORTS_DIR ya que es una ruta absoluta
+os.makedirs(REPORTS_DIR, exist_ok=True)
 
 # Configuración por defecto
 DEFAULT_CONFIG = {

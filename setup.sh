@@ -1,6 +1,6 @@
 #!/bin/bash
 # SLAM (Squid Log Analyzer Manager) - By Maxwell
-# v1.1
+# v1.1.1
 
 # Configuración de colores
 RED='\033[1;31m'
@@ -85,7 +85,6 @@ show_credits() {
     safe_sleep 1.5
 }
 
-# Verificar root
 check_root() {
     if [ "$(id -u)" -ne 0 ]; then
         echo -e "${RED}✗ Este script debe ejecutarse como root${NC}"
@@ -93,7 +92,6 @@ check_root() {
     fi
 }
 
-# Verificar e instalar bc si es necesario
 check_bc() {
     if ! command -v bc >/dev/null; then
         echo -ne "${YELLOW}■ Instalando bc para cálculos...${NC}"
@@ -102,7 +100,6 @@ check_bc() {
     fi
 }
 
-# Verificar squid
 check_squid() {
     echo -e "${BLUE}■ Verificando instalación de Squid...${NC}"
     if systemctl list-unit-files | grep -q squid; then
@@ -116,7 +113,6 @@ check_squid() {
     safe_sleep 1
 }
 
-# Configurar formato de log de Squid
 configure_squid() {
     echo -e "${BLUE}■ Configuración de Squid${NC}"
     
@@ -132,24 +128,20 @@ configure_squid() {
         s|S|y|Y)
             echo -ne "${YELLOW}  Configurando formato de log...${NC}"
             
-            # Backup del archivo original
             cp "$SQUID_CONF" "${SQUID_CONF}.bak"
             
-            # Configurar logformat
             if grep -q "^logformat custom" "$SQUID_CONF"; then
                 sed -i "/^logformat custom/c\\$SQUID_LOG_FORMAT" "$SQUID_CONF"
             else
                 echo "$SQUID_LOG_FORMAT" >> "$SQUID_CONF"
             fi
             
-            # Configurar access_log
             if grep -q "^access_log" "$SQUID_CONF"; then
                 sed -i "/^access_log/c\\$SQUID_ACCESS_LOG" "$SQUID_CONF"
             else
                 echo "$SQUID_ACCESS_LOG" >> "$SQUID_CONF"
             fi
             
-            # Reiniciar squid si está instalado
             if [ "$SQUID_INSTALLED" = true ]; then
                 systemctl restart squid >/dev/null 2>&1
             fi
@@ -162,7 +154,6 @@ configure_squid() {
     esac
 }
 
-# Instalar paquetes
 install_packages() {
     echo -e "${BLUE}■ Instalando dependencias del sistema...${NC}"
     
@@ -195,7 +186,6 @@ except ImportError as e:
 " >/dev/null 2>&1) & spinner
 }
 
-# Crear directorios
 create_dirs() {
     echo -e "${BLUE}■ Creando estructura de directorios...${NC}"
     declare -a dirs=("$INSTALL_DIR" "$LOG_DIR" "$INSTALL_DIR/templates" "$INSTALL_DIR/static" "$REPORTS_DIR")
@@ -207,7 +197,6 @@ create_dirs() {
     done
 }
 
-# Copiar archivos
 copy_files() {
     echo -e "${BLUE}■ Copiando archivos del proyecto...${NC}"
     
@@ -266,7 +255,6 @@ EOF
     echo -e " ${GREEN}✓${NC}"
 }
 
-# Configurar cron job
 setup_cron() {
     echo -e "${BLUE}■ Configurando cron job...${NC}"
     if ! grep -q "slam" /etc/crontab; then
@@ -279,7 +267,6 @@ setup_cron() {
     fi
 }
 
-# Configurar logrotate
 setup_logrotate() {
     echo -ne "${BLUE}■ Configurando logrotate...${NC}"
     cat > /etc/logrotate.d/slam << 'EOF'
@@ -345,7 +332,6 @@ copy_files
 setup_cron
 setup_logrotate
 
-# Configurar Squid al final
 configure_squid
 
 echo -e "${GREEN}■ Proceso de instalación completado${NC}"
