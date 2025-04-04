@@ -10,7 +10,6 @@ import re
 from config import TEMPLATES_DIR, REPORTS_DIR, CHART_COLORS, STATIC_DIR
 
 class SquidReportGenerator:
-    """Clase para generar Reportes a partir del análisis de logs de Squid."""
     
     def __init__(self, analyzer):
         """Inicializa el generador de Reportes con un analizador."""
