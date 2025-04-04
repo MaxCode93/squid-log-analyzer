@@ -11,7 +11,6 @@ from report_generator import SquidReportGenerator
 from config import DEFAULT_CONFIG, REPORTS_DIR
 
 def parse_args():
-    """Parsea los argumentos de línea de comandos."""
     parser = argparse.ArgumentParser(description='Squid Log Analyzer')
     parser.add_argument('log_file', nargs='?', default=DEFAULT_CONFIG["squid_log_path"], help='Path to the Squid log file')  # Usar ruta por defecto
     parser.add_argument('-o', '--output', help='Output directory for the report')

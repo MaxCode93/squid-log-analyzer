@@ -417,7 +417,6 @@ class SquidLogAnalyzer:
     
     def get_date_range(self):
         """Obtiene el rango de fechas en el log."""
-        # Como no tenemos timestamp real, devolvemos la fecha actual
         now = datetime.now()
         return now, now
 
