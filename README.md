@@ -84,13 +84,11 @@ nano /etc/crontab
         AllowOverride None
         Require all granted
         
-        # Configuración adicional de seguridad
         <FilesMatch "\.(log|txt)$">
             Require ip 192.168.1.0/24  # Solo permite IPs locales
         </FilesMatch>
     </Directory>
 
-    # Forzar HTTPS si es necesario
     Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains"
    </VirtualHost>
    ```
@@ -111,12 +109,10 @@ nano /etc/crontab
         try_files $uri $uri/ =404;
         autoindex on;
         
-        # Restricción de acceso
         allow 192.168.1.0/24;
         deny all;
     }
 
-    # Bloquear acceso directo a archivos .log
     location ~ \.log$ {
         return 403;
     }
