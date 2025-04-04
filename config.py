@@ -9,7 +9,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
-REPORTS_DIR = "/var/www/sarg"
+REPORTS_DIR = "/var/www/slam"
 
 # Asegurar que los directorios existan
 for directory in [TEMPLATES_DIR, STATIC_DIR]:
