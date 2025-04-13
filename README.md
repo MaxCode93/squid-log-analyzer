@@ -60,7 +60,7 @@ Para analizar manualmente el archivo de registro de Squid, utiliza el siguiente 
 slam
 ```
 
-El script se ejecuta automáticamente cada 1h, usted puede cambiar esto modificando: 
+El script se ejecuta automáticamente cada 1 hora, usted puede cambiar esto modificando: 
 
 ```bash
 nano /etc/crontab
