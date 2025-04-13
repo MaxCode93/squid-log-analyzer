@@ -12,7 +12,7 @@
 ## ✨ Características
 
 - **Análisis Detallado**: Examina tus registros de acceso con estadísticas profundas.
-- **Visualizaciones**: Grafica datos clave para una interpretación rápida.
+- **Visualizaciones**: Gráfica datos clave para una interpretación rápida.
 - **Filtro Personalizado**: Filtra la información según tus necesidades.
 - **Interfaz Intuitiva**: Diseñada para facilitar su uso.
 
