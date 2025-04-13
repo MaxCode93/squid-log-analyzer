@@ -1,6 +1,6 @@
 #!/bin/bash
 # SLAM (Squid Log Analyzer Manager) - By Maxwell
-# v1.1.1
+# v1.2
 
 # Configuración de colores
 RED='\033[1;31m'
@@ -19,8 +19,17 @@ CRON_JOB="0 * * * * root /usr/local/bin/slam"
 REPORTS_DIR="/var/www/slam"
 INSTALL_LOG="/var/log/slam_install.log"
 SQUID_CONF="/etc/squid/squid.conf"
-SQUID_LOG_FORMAT='logformat custom %>a %un "%rm %ru HTTP/%rv" %>Hs %<st "%{User-Agent}>h" %Ss:%Sh'
-SQUID_ACCESS_LOG='access_log daemon:/var/log/squid/access.log custom'
+
+# Formatos de log disponibles
+SQUID_LOG_FORMATS=(
+    "logformat detailed %>a %un \"%rm %ru\" %>Hs %<st \"%{User-Agent}>h\" %Ss:%Sh"
+    "logformat common %>a %un %ru [%{%d/%b/%Y:%H:%M:%S %z}tl] %st %Ss/%03>Hs %rm %mt \"%{User-Agent}>h\""
+    "logformat squid_native %ts.%03tu %6tr %>a %Ss/%03>Hs %<st %rm %ru %un %Sh/%<a %mt"
+)
+
+# Formato de log por defecto
+DEFAULT_SQUID_LOG_FORMAT='logformat custom %>a %un %ru [%{%d/%b/%Y:%H:%M:%S %z}tl] %st %Ss/%03>Hs %rm %mt "%{User-Agent}>h"'
+DEFAULT_SQUID_ACCESS_LOG='access_log daemon:/var/log/squid/access.log custom'
 
 safe_sleep() {
     local duration=$1
@@ -79,7 +88,7 @@ show_credits() {
     echo " |_____/|______/_/    \_|_|  |_|  "
     echo -e "${NC}"
     echo -e "${CYAN} SQUID LOG ANALYZER MANAGER${NC}"
-    echo -e "${YELLOW} Versión 1.1 - By Maxwell${NC}"
+    echo -e "${YELLOW} Versión 1.2 - By Maxwell${NC}"
     echo -e "${BLUE}--------------------------------------${NC}"
     echo
     safe_sleep 1.5
@@ -121,25 +130,70 @@ configure_squid() {
         return
     fi
     
-	echo -e "${YELLOW}■ Es necesario aplicar un formato de log personalizado al Squid.${NC}"
-	echo -e "${YELLOW}■ Eje: 192.168.1.10 johndoe GET /images/logo.png HTTP/1.1 200 45 Mozilla/5.0 (Windows NT 10.0; Win64; x64) TCP_HIT:-${NC}"
+    echo -e "${YELLOW}■ Es necesario aplicar un formato de log personalizado al Squid.${NC}"
+    echo -e "${YELLOW}■ SLAM soporta múltiples formatos de log.${NC}"
+    
+    PS3="Seleccione un formato de log (1-4): "
+    select format in "Formato personalizado (recomendado)" "Formato detallado" "Formato común" "Formato nativo de Squid"; do
+        case $REPLY in
+            1)
+                selected_format="$DEFAULT_SQUID_LOG_FORMAT"
+                selected_access_log="$DEFAULT_SQUID_ACCESS_LOG"
+                echo -e "${GREEN}  ✓ Seleccionado: Formato personalizado${NC}"
+                echo -e "${CYAN}    %>a %un %ru [%{%d/%b/%Y:%H:%M:%S %z}tl] %st %Ss/%03>Hs %rm %mt \"%{User-Agent}>h\"${NC}"
+                break
+                ;;
+            2)
+                selected_format="${SQUID_LOG_FORMATS[0]}"
+                selected_access_log="access_log daemon:/var/log/squid/access.log detailed"
+                echo -e "${GREEN}  ✓ Seleccionado: Formato detallado${NC}"
+                break
+                ;;
+            3)
+                selected_format="${SQUID_LOG_FORMATS[1]}"
+                selected_access_log="access_log daemon:/var/log/squid/access.log common"
+                echo -e "${GREEN}  ✓ Seleccionado: Formato común${NC}"
+                break
+                ;;
+            4)
+                selected_format="${SQUID_LOG_FORMATS[2]}"
+                selected_access_log="access_log daemon:/var/log/squid/access.log squid_native"
+                echo -e "${GREEN}  ✓ Seleccionado: Formato nativo de Squid${NC}"
+                break
+                ;;
+            *)
+                echo -e "${RED}  ✗ Opción inválida${NC}"
+                ;;
+        esac
+    done
+    
     read -p "¿Deseas configurar automáticamente el formato de logs en squid.conf? [s/N]: " choice
     case "$choice" in
         s|S|y|Y)
             echo -ne "${YELLOW}  Configurando formato de log...${NC}"
             
-            cp "$SQUID_CONF" "${SQUID_CONF}.bak"
+            cp "$SQUID_CONF" "${SQUID_CONF}.bak.$(date +%Y%m%d%H%M%S)"
             
-            if grep -q "^logformat custom" "$SQUID_CONF"; then
-                sed -i "/^logformat custom/c\\$SQUID_LOG_FORMAT" "$SQUID_CONF"
+            # Buscar y reemplazar o añadir la configuración de logformat
+            if grep -q "^logformat " "$SQUID_CONF"; then
+                # Si ya existe alguna configuración de logformat, añadir la nueva
+                if ! grep -q "$selected_format" "$SQUID_CONF"; then
+                    echo "$selected_format" >> "$SQUID_CONF"
+                fi
             else
-                echo "$SQUID_LOG_FORMAT" >> "$SQUID_CONF"
+                # Si no existe ninguna configuración de logformat, añadir la nueva
+                echo "$selected_format" >> "$SQUID_CONF"
             fi
             
-            if grep -q "^access_log" "$SQUID_CONF"; then
-                sed -i "/^access_log/c\\$SQUID_ACCESS_LOG" "$SQUID_CONF"
+            # Buscar y reemplazar o añadir la configuración de access_log
+            if grep -q "^access_log " "$SQUID_CONF"; then
+                # Comentar las líneas existentes de access_log
+                sed -i 's/^access_log/#access_log/g' "$SQUID_CONF"
+                # Añadir la nueva configuración
+                echo "$selected_access_log" >> "$SQUID_CONF"
             else
-                echo "$SQUID_ACCESS_LOG" >> "$SQUID_CONF"
+                # Si no existe ninguna configuración de access_log, añadir la nueva
+                echo "$selected_access_log" >> "$SQUID_CONF"
             fi
             
             if [ "$SQUID_INSTALLED" = true ]; then
@@ -161,7 +215,7 @@ install_packages() {
     (apt-get update >/dev/null 2>&1) & spinner
     echo -e " ${GREEN}✓${NC}"
     
-    declare -a packages=("python3" "python3-pip" "python3-tk")
+    declare -a packages=("python3" "python3-pip" "python3-tk" "python3-dev")
     for pkg in "${packages[@]}"; do
         echo -ne "${YELLOW}  Instalando $pkg...${NC}"
         (DEBIAN_FRONTEND=noninteractive apt-get install -y $pkg >/dev/null 2>&1) & spinner
@@ -169,7 +223,7 @@ install_packages() {
     done
     
     echo -e "${YELLOW}■ Instalando módulos Python...${NC}"
-    declare -a py_modules=("pandas" "matplotlib" "seaborn" "Jinja2")
+    declare -a py_modules=("pandas" "matplotlib" "seaborn" "Jinja2" "numpy" "python-dateutil")
     for module in "${py_modules[@]}"; do
         echo -ne "  ${CYAN}»${NC} Instalando ${WHITE}$module${NC}"
         (pip install --break-system-packages $module >/dev/null 2>&1) & spinner
@@ -178,7 +232,7 @@ install_packages() {
     
     (python3 -c "
 try:
-    import pandas, matplotlib, seaborn, jinja2
+    import pandas, matplotlib, seaborn, jinja2, numpy, dateutil
     print('\n${GREEN}✓ Todos los módulos instalados correctamente${NC}')
 except ImportError as e:
     print('\n${RED}✗ Error: ' + str(e) + '${NC}')
@@ -235,10 +289,35 @@ OUTPUT_DIR="/var/www/slam"
 LOG_DATE=$(date +"%Y%m%d_%H%M%S")
 ANALYSIS_LOG="/var/log/slam/analysis_$LOG_DATE.log"
 
+# Procesar argumentos
+FORMAT="auto"
+VERBOSE=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -f|--format)
+            FORMAT="$2"
+            shift 2
+            ;;
+        -v|--verbose)
+            VERBOSE="-v"
+            shift
+            ;;
+        *)
+            LOG_FILE="$1"
+            shift
+            ;;
+    esac
+done
+
 {
     echo "Iniciando análisis a $(date)"
+    echo "Archivo de log: $LOG_FILE"
+    echo "Formato: $FORMAT"
+    
     cd "$INSTALL_DIR"
-    python3 main.py "$LOG_FILE" -o "$OUTPUT_DIR/reporte_$LOG_DATE"
+    python3 main.py "$LOG_FILE" -o "$OUTPUT_DIR/reporte_$LOG_DATE" -f "$FORMAT" $VERBOSE
+    
     echo "Análisis completado a $(date)"
 } >> "$ANALYSIS_LOG" 2>&1
 EOF
@@ -249,7 +328,7 @@ EOF
     cat > "$BIN_DIR/slam-gui" << 'EOF'
 #!/bin/bash
 cd /etc/slam
-python3 gui.py
+python3 -m gui
 EOF
     (chmod +x "$BIN_DIR/slam-gui") & spinner
     echo -e " ${GREEN}✓${NC}"
@@ -297,10 +376,11 @@ show_finish() {
     echo -e "${CYAN}╠══════════════════════════════════════════════════════════╣${NC}"
     echo -e "${CYAN} ${YELLOW}♦ Comandos disponibles:${NC}                    "
     echo -e "${CYAN} ${WHITE}  • ${GREEN}slam${NC} - Ejecuta análisis manual  "
+    echo -e "${CYAN} ${WHITE}  • ${GREEN}slam -f FORMAT${NC} - Especifica formato de log"
     echo -e "${CYAN}╠══════════════════════════════════════════════════════════╣${NC}"
     echo -e "${CYAN} ${YELLOW}♦ Configuración automática:${NC}                "
     echo -e "${CYAN} ${WHITE}  Se ejecutará ${GREEN}cada hora${NC}            "
-    echo -e "${CYAN}╚══════════════════════════════════════════════════════════╝${NC}"
+    echo -e "${CYAN}╠══════════════════════════════════════════════════════════╣${NC}"
     echo
     if [ "$SQUID_INSTALLED" = false ]; then
         echo -e "${YELLOW}════════════════════ ATENCIÓN ═══════════════════════${NC}"

@@ -35,6 +35,7 @@ DEFAULT_CONFIG = {
     ],
     "theme": "light",
     "language": "es",
+    "log_format": "auto",  # Formato de log: auto, detailed, common, squid_native, custom
 }
 
 # Colores para gráficos
@@ -42,6 +43,25 @@ CHART_COLORS = [
     "#4e79a7", "#f28e2c", "#e15759", "#76b7b2", "#59a14f",
     "#edc949", "#af7aa1", "#ff9da7", "#9c755f", "#bab0ab"
 ]
+
+# Formatos de log soportados
+LOG_FORMATS = {
+    'auto': 'Detección automática',
+    'detailed': 'Detallado (personalizado)',
+    'common': 'Común (CLF)',
+    'squid_native': 'Nativo de Squid',
+    'custom': 'Personalizado (estándar)',
+    'custom_new': 'Personalizado (nuevo)'
+}
+
+# Descripción de los formatos de log
+LOG_FORMAT_DESCRIPTIONS = {
+    'detailed': 'client_ip username "method url" status_code size "user_agent" squid_status',
+    'common': 'client_ip ident username [timestamp] "method url protocol" status_code size',
+    'squid_native': 'timestamp elapsed client_ip result_code/status_code size method url username hierarchy_code/peer_host content_type',
+    'custom': 'client_ip username url [timestamp] size squid_status/status_code method mime_type "user_agent"',
+    'custom_new': '%>a %un %ru [%{%d/%b/%Y:%H:%M:%S %z}tl] %st %Ss/%03>Hs %rm %mt "%{User-Agent}>h"'
+}
 
 # Estructura del archivo de log de Squid
 # Formato: timestamp elapsed remotehost code/status bytes method URL rfc931 peerstatus/peerhost type

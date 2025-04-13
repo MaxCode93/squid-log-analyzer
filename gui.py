@@ -4,10 +4,14 @@ import os
 import threading
 import webbrowser
 from datetime import datetime, timedelta
+import logging
 
 from analyzer import SquidLogAnalyzer
 from report_generator import SquidReportGenerator
 from config import DEFAULT_CONFIG, REPORTS_DIR
+
+# Configurar logging
+logger = logging.getLogger('SLAM.GUI')
 
 class SquidAnalyzerGUI(tk.Tk):
     """Interfaz gráfica para el analizador de logs de Squid."""
@@ -25,6 +29,7 @@ class SquidAnalyzerGUI(tk.Tk):
         self.user_var = tk.StringVar()
         self.status_var = tk.StringVar(value="Listo para analizar")
         self.progress_var = tk.DoubleVar(value=0)
+        self.format_var = tk.StringVar(value="auto")
         
         # Crear interfaz
         self._create_widgets()
@@ -61,6 +66,12 @@ class SquidAnalyzerGUI(tk.Tk):
         
         ttk.Label(options_frame, text="Usuario específico (opcional):").grid(row=1, column=0, sticky=tk.W, pady=5)
         ttk.Entry(options_frame, textvariable=self.user_var, width=20).grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        ttk.Label(options_frame, text="Formato de log:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        format_combo = ttk.Combobox(options_frame, textvariable=self.format_var, width=15)
+        format_combo['values'] = ('auto', 'detailed', 'common', 'squid_native', 'custom', 'custom_new')
+        format_combo.current(0)
+        format_combo.grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
         
         # Botones de acción
         actions_frame = ttk.Frame(main_frame)
@@ -113,9 +124,16 @@ class SquidAnalyzerGUI(tk.Tk):
         analysis_menu.add_command(label="Limpiar resultados", command=self._clear_results)
         menubar.add_cascade(label="Análisis", menu=analysis_menu)
         
+        # Menú Herramientas
+        tools_menu = tk.Menu(menubar, tearoff=0)
+        tools_menu.add_command(label="Ver índice de informes", command=self._open_reports_index)
+        tools_menu.add_command(label="Configuración", command=self._show_config)
+        menubar.add_cascade(label="Herramientas", menu=tools_menu)
+        
         # Menú Ayuda
         help_menu = tk.Menu(menubar, tearoff=0)
         help_menu.add_command(label="Acerca de", command=self._show_about)
+        help_menu.add_command(label="Ayuda", command=self._show_help)
         menubar.add_cascade(label="Ayuda", menu=help_menu)
         
         self.config(menu=menubar)
@@ -163,16 +181,21 @@ class SquidAnalyzerGUI(tk.Tk):
             log_file = self.log_file_var.get()
             days = self.days_var.get()
             user = self.user_var.get()
+            log_format = self.format_var.get()
             
             # Actualizar progreso
             self._update_status("Iniciando análisis...", 10)
             
-            # Crear analizador
-            analyzer = SquidLogAnalyzer(log_file)
+            # Crear analizador con el formato especificado
+            analyzer = SquidLogAnalyzer(log_file, log_format)
             
             # Leer y procesar el archivo
             self._update_status("Procesando archivo de log...", 20)
             analyzer.to_dataframe()
+            
+            # Mostrar formato detectado si se usó auto
+            if log_format == 'auto' and hasattr(analyzer, 'detected_format'):
+                self._update_results(f"Formato de log detectado: {analyzer.detected_format}")
             
             # Filtrar por fecha si se especificó
             if days > 0:
@@ -228,6 +251,7 @@ class SquidAnalyzerGUI(tk.Tk):
         except Exception as e:
             self._update_results(f"\nError durante el análisis: {str(e)}")
             self._update_status("Error en el análisis", 0)
+            logger.exception("Error durante el análisis")
         finally:
             # Habilitar botones
             self.after(0, self._enable_buttons)
@@ -268,6 +292,7 @@ class SquidAnalyzerGUI(tk.Tk):
             webbrowser.open(f"file://{os.path.abspath(report_path)}")
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo abrir el navegador: {e}")
+            logger.error(f"Error al abrir el navegador: {e}")
     
     def _open_last_report(self):
         """Abre el último informe generado."""
@@ -293,16 +318,217 @@ class SquidAnalyzerGUI(tk.Tk):
             self._open_report(report_path)
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo abrir el último informe: {e}")
+            logger.error(f"Error al abrir el último informe: {e}")
+    
+    def _open_reports_index(self):
+        """Abre el índice de informes generados."""
+        try:
+            from report_generator import SquidReportGenerator
+            index_path = SquidReportGenerator.generate_reports_index()
+            
+            if index_path and os.path.isfile(index_path):
+                self._open_report(index_path)
+            else:
+                messagebox.showinfo("Información", "No se pudo generar el índice de informes")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al generar índice de informes: {e}")
+            logger.error(f"Error al generar índice de informes: {e}")
+    
+    def _show_config(self):
+        """Muestra la ventana de configuración."""
+        config_window = tk.Toplevel(self)
+        config_window.title("Configuración")
+        config_window.geometry("500x400")
+        config_window.resizable(True, True)
+        config_window.transient(self)
+        config_window.grab_set()
+        
+        # Frame principal
+        main_frame = ttk.Frame(config_window, padding=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Notebook para pestañas
+        notebook = ttk.Notebook(main_frame)
+        notebook.pack(fill=tk.BOTH, expand=True)
+        
+        # Pestaña de configuración general
+        general_tab = ttk.Frame(notebook, padding=10)
+        notebook.add(general_tab, text="General")
+        
+        # Configuración de rutas
+        ttk.Label(general_tab, text="Ruta de logs de Squid:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        squid_log_entry = ttk.Entry(general_tab, width=40)
+        squid_log_entry.insert(0, DEFAULT_CONFIG["squid_log_path"])
+        squid_log_entry.grid(row=0, column=1, sticky=tk.EW, padx=5, pady=5)
+        
+        ttk.Label(general_tab, text="Directorio de informes:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        reports_dir_entry = ttk.Entry(general_tab, width=40)
+        reports_dir_entry.insert(0, REPORTS_DIR)
+        reports_dir_entry.grid(row=1, column=1, sticky=tk.EW, padx=5, pady=5)
+        
+        # Configuración de análisis
+        ttk.Label(general_tab, text="Intervalo de actualización (seg):").grid(row=2, column=0, sticky=tk.W, pady=5)
+        refresh_entry = ttk.Entry(general_tab, width=10)
+        refresh_entry.insert(0, str(DEFAULT_CONFIG["refresh_interval"]))
+        refresh_entry.grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        ttk.Label(general_tab, text="Formato de log predeterminado:").grid(row=3, column=0, sticky=tk.W, pady=5)
+        format_combo = ttk.Combobox(general_tab, width=15)
+        format_combo['values'] = ('auto', 'detailed', 'common', 'squid_native', 'custom', 'custom_new')
+        format_combo.current(0)
+        format_combo.grid(row=3, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # Pestaña de exclusiones
+        exclusions_tab = ttk.Frame(notebook, padding=10)
+        notebook.add(exclusions_tab, text="Exclusiones")
+        
+        ttk.Label(exclusions_tab, text="Dominios excluidos:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        domains_text = tk.Text(exclusions_tab, width=40, height=5)
+        domains_text.grid(row=0, column=1, sticky=tk.EW, padx=5, pady=5)
+        for domain in DEFAULT_CONFIG["excluded_domains"]:
+            domains_text.insert(tk.END, domain + "\n")
+        
+        ttk.Label(exclusions_tab, text="Usuarios excluidos:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        users_text = tk.Text(exclusions_tab, width=40, height=5)
+        users_text.grid(row=1, column=1, sticky=tk.EW, padx=5, pady=5)
+        for user in DEFAULT_CONFIG["excluded_users"]:
+            users_text.insert(tk.END, user + "\n")
+        
+        # Pestaña de apariencia
+        appearance_tab = ttk.Frame(notebook, padding=10)
+        notebook.add(appearance_tab, text="Apariencia")
+        
+        ttk.Label(appearance_tab, text="Tema:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        theme_combo = ttk.Combobox(appearance_tab, width=15)
+        theme_combo['values'] = ('light', 'dark', 'system')
+        theme_combo.current(0 if DEFAULT_CONFIG["theme"] == "light" else 1)
+        theme_combo.grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        ttk.Label(appearance_tab, text="Idioma:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        lang_combo = ttk.Combobox(appearance_tab, width=15)
+        lang_combo['values'] = ('es', 'en')
+        lang_combo.current(0 if DEFAULT_CONFIG["language"] == "es" else 1)
+        lang_combo.grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # Botones de acción
+        buttons_frame = ttk.Frame(main_frame)
+        buttons_frame.pack(fill=tk.X, pady=10)
+        
+        ttk.Button(buttons_frame, text="Guardar", command=lambda: self._save_config(
+            squid_log_entry.get(),
+            reports_dir_entry.get(),
+            refresh_entry.get(),
+            format_combo.get(),
+            domains_text.get(1.0, tk.END),
+            users_text.get(1.0, tk.END),
+            theme_combo.get(),
+            lang_combo.get(),
+            config_window
+        )).pack(side=tk.RIGHT, padx=5)
+        
+        ttk.Button(buttons_frame, text="Cancelar", command=config_window.destroy).pack(side=tk.RIGHT, padx=5)
+        
+        # Configurar grid
+        general_tab.columnconfigure(1, weight=1)
+        exclusions_tab.columnconfigure(1, weight=1)
+        appearance_tab.columnconfigure(1, weight=1)
+    
+    def _save_config(self, squid_log, reports_dir, refresh, log_format, domains, users, theme, language, window):
+        """Guarda la configuración."""
+        try:
+            # Aquí se implementaría la lógica para guardar la configuración
+            # Por ahora, solo mostramos un mensaje
+            messagebox.showinfo("Información", "La funcionalidad de guardar configuración no está implementada aún")
+            window.destroy()
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al guardar la configuración: {e}")
+            logger.error(f"Error al guardar la configuración: {e}")
     
     def _show_about(self):
         """Muestra información sobre la aplicación."""
         messagebox.showinfo(
             "Acerca de",
-            "Squid Log Analyzer(SLAM)\n\n"
+            "Squid Log Analyzer (SLAM)\n\n"
             "Una herramienta para analizar logs de Squid Proxy.\n\n"
             "Versión: 1.1.1\n"
-            "© 2025 - Todos los derechos reservados"
+            "© 2023 - Todos los derechos reservados"
         )
+    
+    def _show_help(self):
+        """Muestra la ayuda de la aplicación."""
+        help_window = tk.Toplevel(self)
+        help_window.title("Ayuda de SLAM")
+        help_window.geometry("600x500")
+        help_window.resizable(True, True)
+        help_window.transient(self)
+        
+        # Frame principal
+        main_frame = ttk.Frame(help_window, padding=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Título
+        ttk.Label(main_frame, text="Ayuda de Squid Log Analyzer", font=("Helvetica", 14, "bold")).pack(pady=10)
+        
+        # Área de texto con scrollbar
+        help_frame = ttk.Frame(main_frame)
+        help_frame.pack(fill=tk.BOTH, expand=True)
+        
+        help_text = tk.Text(help_frame, wrap=tk.WORD, padx=10, pady=10)
+        help_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        scrollbar = ttk.Scrollbar(help_frame, command=help_text.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        help_text.config(yscrollcommand=scrollbar.set)
+        
+        # Contenido de la ayuda
+        help_content = """
+# Guía de uso de SLAM
+
+## Introducción
+SLAM (Squid Log Analyzer Manager) es una herramienta diseñada para analizar los archivos de log del proxy Squid y generar informes detallados sobre su uso.
+
+## Funcionalidades principales
+
+### 1. Análisis de logs
+- Seleccione un archivo de log de Squid
+- Elija el formato del log (o use detección automática)
+- Filtre por fecha o usuario específico
+- Genere informes completos con estadísticas y gráficos
+
+### 2. Formatos de log soportados
+- auto: Detección automática del formato
+- detailed: Formato detallado personalizado
+- common: Formato común de logs web (CLF)
+- squid_native: Formato nativo de Squid
+- custom: Formato personalizado 1
+- custom_new: Formato personalizado 2
+
+### 3. Filtros disponibles
+- Por rango de fechas (últimos N días)
+- Por usuario específico
+
+### 4. Visualización de informes
+- Informes HTML interactivos
+- Gráficos de uso por dominio, usuario, hora, etc.
+- Estadísticas detalladas de tráfico
+
+## Consejos de uso
+- Para un análisis completo, use la detección automática de formato
+- Si conoce el formato exacto de su log, selecciónelo para un análisis más preciso
+- Los informes se guardan en el directorio configurado y pueden ser accedidos posteriormente
+- Use el índice de informes para acceder a todos los informes generados
+
+## Solución de problemas
+- Si el análisis falla, verifique que el archivo de log tenga el formato correcto
+- Asegúrese de tener permisos de lectura sobre el archivo de log
+- Para logs muy grandes, el análisis puede tomar varios minutos
+        """
+        
+        help_text.insert(tk.END, help_content)
+        help_text.config(state=tk.DISABLED)
+        
+        # Botón de cerrar
+        ttk.Button(main_frame, text="Cerrar", command=help_window.destroy).pack(pady=10)
 
 if __name__ == "__main__":
     app = SquidAnalyzerGUI()

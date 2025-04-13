@@ -4,48 +4,126 @@ import os
 from datetime import datetime
 from urllib.parse import urlparse
 import numpy as np
+import logging
+from dateutil import parser as date_parser
+
+logger = logging.getLogger('SLAM.Analyzer')
 
 class SquidLogAnalyzer:
     """Clase para analizar logs de Squid."""
     
-    def __init__(self, log_path):
-        """Inicializa el analizador con la ruta al archivo de log."""
+    def __init__(self, log_path, log_format='auto'):
+        """
+        Inicializa el analizador con la ruta al archivo de log y el formato.
+        
+        Args:
+            log_path: Ruta al archivo de log
+            log_format: Formato del log ('auto', 'detailed', 'common', 'squid_native', 'custom', 'custom_new')
+        """
         self.log_path = log_path
+        self.log_format = log_format
         self.df = None
         self.log_lines = 0
+        self.detected_format = None
         
     def read_log_file(self):
-        """Lee el archivo de log de Squid y lo procesa."""
+        """Lee el archivo de log de Squid y lo procesa según el formato especificado."""
         self.log_data = []
         
         try:
             with open(self.log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                # Leer las primeras líneas para detectar el formato si es 'auto'
+                if self.log_format == 'auto':
+                    sample_lines = [next(f) for _ in range(10) if f]
+                    f.seek(0)  # Volver al inicio del archivo
+                    self.detected_format = self._detect_log_format(sample_lines)
+                    logger.info(f"Formato de log detectado: {self.detected_format}")
+                    format_to_use = self.detected_format
+                else:
+                    format_to_use = self.log_format
+                
+                # Seleccionar el parser adecuado según el formato
+                parser_method = self._get_parser_for_format(format_to_use)
+                
                 for line in f:
-                    # Procesar cada línea según el formato detailed
-                    parsed_line = self._parse_detailed_log_line(line.strip())
+                    # Procesar cada línea según el formato detectado/especificado
+                    parsed_line = parser_method(line.strip())
                     if parsed_line:
                         self.log_data.append(parsed_line)
             
             self.log_lines = len(self.log_data)
             return True
         except Exception as e:
-            print(f"Error al leer el archivo de log: {e}")
+            logger.error(f"Error al leer el archivo de log: {e}")
             return False
+    
+    def _detect_log_format(self, sample_lines):
+        """
+        Detecta automáticamente el formato del log basado en muestras de líneas.
+        
+        Args:
+            sample_lines: Lista de líneas de muestra del log
+        
+        Returns:
+            Formato detectado ('detailed', 'common', 'squid_native', 'custom', 'custom_new')
+        """
+        # Patrones para cada formato
+        format_patterns = {
+            'detailed': r'(\S+) (\S+) "(.*?)" (\d+) (\d+|-) "(.*?)" (\S+)',
+            'common': r'(\S+) \S+ (\S+) \[(.*?)\] "(.*?)" (\d+) (\d+|-)',
+            'squid_native': r'(\d+\.\d+)\s+\d+\s+(\S+)\s+(\S+)\/(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\/(\S+)\s+(\S+)',
+            'custom': r'(\S+) (\S+) (\S+) \[(.*?)\] (\d+) (\S+) (\S+) (\S+) "(.*?)"',
+            'custom_new': r'(\S+) (\S+) (\S+) \[(.*?)\] (\d+) (\S+)\/(\d+) (\S+) (\S+) "(.*?)"'
+        }
+        
+        # Contar coincidencias para cada formato
+        format_matches = {fmt: 0 for fmt in format_patterns}
+        
+        for line in sample_lines:
+            for fmt, pattern in format_patterns.items():
+                if re.match(pattern, line):
+                    format_matches[fmt] += 1
+        
+        # Determinar el formato con más coincidencias
+        best_format = max(format_matches.items(), key=lambda x: x[1])
+        
+        # Si no hay coincidencias claras, usar 'detailed' como fallback
+        if best_format[1] == 0:
+            logger.warning("No se pudo detectar el formato. Usando 'detailed' por defecto.")
+            return 'detailed'
+        
+        return best_format[0]
+    
+    def _get_parser_for_format(self, format_name):
+        """
+        Devuelve el método parser adecuado para el formato especificado.
+        
+        Args:
+            format_name: Nombre del formato ('detailed', 'common', etc.)
+        
+        Returns:
+            Método parser correspondiente
+        """
+        parsers = {
+            'detailed': self._parse_detailed_log_line,
+            'common': self._parse_common_log_line,
+            'squid_native': self._parse_squid_native_log_line,
+            'custom': self._parse_custom_log_line,
+            'custom_new': self._parse_custom_new_log_line
+        }
+        
+        return parsers.get(format_name, self._parse_detailed_log_line)
     
     def _parse_detailed_log_line(self, line):
         """
-        Parsea una línea de log en formato optimizado.
-        
-        Format: %>a %un "%rm %ru HTTP/%rv" %>Hs %<st "%{User-Agent}>h" %Ss:%Sh
-        Ejemplo: 192.168.1.254 maxwell "GET http://detectportal.firefox.com/canonical.html HTTP/1.1" 502 4014 "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0" TCP_MISS:HIER_NONE
+        Parsea una línea de log en formato detallado.
+        Formato: client_ip username "method url" status_code size "user_agent" squid_status
         """
         try:
-            # Usar una expresión regular para el nuevo formato
             pattern = r'(\S+) (\S+) "(.*?)" (\d+) (\d+|-) "(.*?)" (\S+)'
             match = re.match(pattern, line)
             
             if not match:
-                print(f"No match for line: {line}")
                 return None
                 
             client_ip, username, request, status_code, size, user_agent, squid_status = match.groups()
@@ -65,28 +143,222 @@ class SquidLogAnalyzer:
             size = int(size) if size != '-' else 0
             
             # Usar la fecha actual como timestamp ya que no está en el log
-            # Esto es solo para mantener la estructura del DataFrame
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
             return {
                 'timestamp': timestamp,
                 'client_ip': client_ip,
-                'user': username if username != '-' else None,
+                'username': username if username != '-' else None,
                 'method': method,
                 'url': url,
                 'domain': domain,
                 'status_code': int(status_code),
                 'size': size,
-                'referer': None,  # No hay referer en el nuevo formato
+                'referer': None,  # No hay referer en este formato
                 'user_agent': user_agent,
                 'squid_status': squid_status,
                 'content_type': content_type
             }
         except Exception as e:
-            print(f"Error al parsear línea: {e}")
-            print(f"Línea: {line}")
+            logger.error(f"Error al parsear línea en formato detailed: {e}")
+            logger.debug(f"Línea: {line}")
             return None
-        
+    
+    def _parse_common_log_line(self, line):
+        """
+        Parsea una línea de log en formato común (CLF).
+        Formato: client_ip ident username [timestamp] "method url protocol" status_code size
+        """
+        try:
+            pattern = r'(\S+) \S+ (\S+) \[(.*?)\] "(.*?)" (\d+) (\d+|-)'
+            match = re.match(pattern, line)
+            
+            if not match:
+                return None
+                
+            client_ip, username, timestamp_str, request, status_code, size = match.groups()
+            
+            # Extraer método y URL del request
+            request_parts = request.split()
+            method = request_parts[0] if len(request_parts) > 0 else "-"
+            url = request_parts[1] if len(request_parts) > 1 else "-"
+            
+            # Extraer dominio de la URL
+            domain = self._extract_domain(url)
+            
+            # Determinar tipo de contenido basado en la URL
+            content_type = self._determine_content_type(url)
+            
+            # Convertir tamaño a entero
+            size = int(size) if size != '-' else 0
+            
+            # Parsear timestamp
+            try:
+                timestamp = date_parser.parse(timestamp_str).strftime('%Y-%m-%d %H:%M:%S')
+            except:
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            return {
+                'timestamp': timestamp,
+                'client_ip': client_ip,
+                'username': username if username != '-' else None,
+                'method': method,
+                'url': url,
+                'domain': domain,
+                'status_code': int(status_code),
+                'size': size,
+                'referer': None,  # No hay referer en este formato
+                'user_agent': None,  # No hay user_agent en este formato
+                'squid_status': None,  # No hay squid_status en este formato
+                'content_type': content_type
+            }
+        except Exception as e:
+            logger.error(f"Error al parsear línea en formato common: {e}")
+            logger.debug(f"Línea: {line}")
+            return None
+    
+    def _parse_squid_native_log_line(self, line):
+        """
+        Parsea una línea de log en formato nativo de Squid.
+        Formato: timestamp elapsed client_ip result_code/status_code size method url username hierarchy_code/peer_host content_type
+        """
+        try:
+            pattern = r'(\d+\.\d+)\s+\d+\s+(\S+)\s+(\S+)\/(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\/(\S+)\s+(\S+)'
+            match = re.match(pattern, line)
+            
+            if not match:
+                return None
+                
+            timestamp_epoch, client_ip, result_code, status_code, size, method, url, username, hierarchy_code, peer_host, content_type_raw = match.groups()
+            
+            # Extraer dominio de la URL
+            domain = self._extract_domain(url)
+            
+            # Determinar tipo de contenido
+            content_type = self._determine_content_type(url)
+            
+            # Convertir timestamp epoch a datetime
+            try:
+                timestamp = datetime.fromtimestamp(float(timestamp_epoch)).strftime('%Y-%m-%d %H:%M:%S')
+            except:
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            return {
+                'timestamp': timestamp,
+                'client_ip': client_ip,
+                'username': username if username != '-' else None,
+                'method': method,
+                'url': url,
+                'domain': domain,
+                'status_code': int(status_code),
+                'size': int(size),
+                'referer': None,  # No hay referer en este formato
+                'user_agent': None,  # No hay user_agent en este formato
+                'squid_status': result_code,
+                'content_type': content_type
+            }
+        except Exception as e:
+            logger.error(f"Error al parsear línea en formato squid_native: {e}")
+            logger.debug(f"Línea: {line}")
+            return None
+    
+    def _parse_custom_log_line(self, line):
+        """
+        Parsea una línea de log en formato personalizado.
+        Formato: client_ip username url [timestamp] size squid_status/status_code method mime_type "user_agent"
+        """
+        try:
+            pattern = r'(\S+) (\S+) (\S+) \[(.*?)\] (\d+) (\S+) (\S+) (\S+) "(.*?)"'
+            match = re.match(pattern, line)
+            
+            if not match:
+                return None
+                
+            client_ip, username, url, timestamp_str, size, status_info, method, mime_type, user_agent = match.groups()
+            
+            # Extraer dominio de la URL
+            domain = self._extract_domain(url)
+            
+            # Determinar tipo de contenido
+            content_type = self._determine_content_type(url)
+            
+            # Extraer código de estado
+            if '/' in status_info:
+                squid_status, status_code = status_info.split('/')
+            else:
+                squid_status = status_info
+                status_code = 0
+            
+            # Parsear timestamp
+            try:
+                timestamp = date_parser.parse(timestamp_str).strftime('%Y-%m-%d %H:%M:%S')
+            except:
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            return {
+                'timestamp': timestamp,
+                'client_ip': client_ip,
+                'username': username if username != '-' else None,
+                'method': method,
+                'url': url,
+                'domain': domain,
+                'status_code': int(status_code),
+                'size': int(size),
+                'referer': None,  # No hay referer en este formato
+                'user_agent': user_agent,
+                'squid_status': squid_status,
+                'content_type': content_type if content_type else mime_type
+            }
+        except Exception as e:
+            logger.error(f"Error al parsear línea en formato custom: {e}")
+            logger.debug(f"Línea: {line}")
+            return None
+    
+    def _parse_custom_new_log_line(self, line):
+        """
+        Parsea una línea de log en formato personalizado nuevo.
+        Formato: client_ip username url [timestamp] status_code squid_status/hierarchy_code method mime_type "user_agent"
+        """
+        try:
+            pattern = r'(\S+) (\S+) (\S+) \[(.*?)\] (\d+) (\S+)\/(\d+) (\S+) (\S+) "(.*?)"'
+            match = re.match(pattern, line)
+            
+            if not match:
+                return None
+                
+            client_ip, username, url, timestamp_str, status_code, squid_status, hierarchy_code, method, mime_type, user_agent = match.groups()
+            
+            # Extraer dominio de la URL
+            domain = self._extract_domain(url)
+            
+            # Determinar tipo de contenido
+            content_type = self._determine_content_type(url)
+            
+            # Parsear timestamp
+            try:
+                timestamp = date_parser.parse(timestamp_str).strftime('%Y-%m-%d %H:%M:%S')
+            except:
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            return {
+                'timestamp': timestamp,
+                'client_ip': client_ip,
+                'username': username if username != '-' else None,
+                'method': method,
+                'url': url,
+                'domain': domain,
+                'status_code': int(status_code),
+                'size': 0,  # No hay tamaño en este formato, se podría añadir después
+                'referer': None,  # No hay referer en este formato
+                'user_agent': user_agent,
+                'squid_status': squid_status,
+                'content_type': content_type if content_type else mime_type
+            }
+        except Exception as e:
+            logger.error(f"Error al parsear línea en formato custom_new: {e}")
+            logger.debug(f"Línea: {line}")
+            return None
+    
     def _extract_domain(self, url):
         """Extrae el dominio de una URL."""
         try:
@@ -116,26 +388,29 @@ class SquidLogAnalyzer:
         url_lower = url.lower()
         
         # Imágenes
-        if any(ext in url_lower for ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']):
+        if any(ext in url_lower for ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.ico']):
             return 'image'
         # Documentos
-        elif any(ext in url_lower for ext in ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx']):
+        elif any(ext in url_lower for ext in ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv']):
             return 'document'
         # Audio/Video
-        elif any(ext in url_lower for ext in ['.mp3', '.mp4', '.avi', '.mov', '.flv', '.wav', '.ogg']):
+        elif any(ext in url_lower for ext in ['.mp3', '.mp4', '.avi', '.mov', '.flv', '.wav', '.ogg', '.webm', '.mkv']):
             return 'media'
         # Web
-        elif any(ext in url_lower for ext in ['.html', '.htm', '.php', '.asp', '.aspx', '.jsp']):
+        elif any(ext in url_lower for ext in ['.html', '.htm', '.php', '.asp', '.aspx', '.jsp', '.do']):
             return 'web'
         # JavaScript/CSS
-        elif any(ext in url_lower for ext in ['.js', '.css']):
+        elif any(ext in url_lower for ext in ['.js', '.css', '.json', '.xml']):
             return 'web-resource'
         # Comprimidos
-        elif any(ext in url_lower for ext in ['.zip', '.rar', '.7z', '.tar', '.gz']):
+        elif any(ext in url_lower for ext in ['.zip', '.rar', '.7z', '.tar', '.gz', '.bz2']):
             return 'archive'
         # Ejecutables
-        elif any(ext in url_lower for ext in ['.exe', '.msi', '.bin', '.sh']):
+        elif any(ext in url_lower for ext in ['.exe', '.msi', '.bin', '.sh', '.bat', '.apk']):
             return 'executable'
+        # Fuentes
+        elif any(ext in url_lower for ext in ['.ttf', '.otf', '.woff', '.woff2', '.eot']):
+            return 'font'
         else:
             return 'other'
     
@@ -149,14 +424,14 @@ class SquidLogAnalyzer:
         self.df = pd.DataFrame(self.log_data)
         
         # Añadir columnas derivadas útiles para el análisis
-        # Como no tenemos timestamp en el log, usamos la fecha actual para las columnas derivadas
-        # o simplemente omitimos estas columnas
         if 'timestamp' in self.df.columns:
             try:
-                self.df['date'] = pd.to_datetime(self.df['timestamp']).dt.date
-                self.df['hour'] = pd.to_datetime(self.df['timestamp']).dt.hour
-                self.df['day_of_week'] = pd.to_datetime(self.df['timestamp']).dt.day_name()
-            except:
+                self.df['timestamp'] = pd.to_datetime(self.df['timestamp'])
+                self.df['date'] = self.df['timestamp'].dt.date
+                self.df['hour'] = self.df['timestamp'].dt.hour
+                self.df['day_of_week'] = self.df['timestamp'].dt.day_name()
+            except Exception as e:
+                logger.warning(f"Error al procesar timestamps: {e}")
                 # Si hay problemas con el timestamp, crear columnas con valores por defecto
                 self.df['date'] = datetime.now().date()
                 self.df['hour'] = datetime.now().hour
@@ -181,7 +456,15 @@ class SquidLogAnalyzer:
         
         # Verificar que las columnas existen
         total_bytes = self.df['size'].sum() if 'size' in self.df.columns else 0
-        unique_users = self.df['user'].nunique() if 'user' in self.df.columns else 0
+        
+        # Determinar qué columna usar para el usuario
+        user_column = None
+        for col in ['username', 'user']:
+            if col in self.df.columns:
+                user_column = col
+                break
+        
+        unique_users = self.df[user_column].nunique() if user_column and user_column in self.df.columns else 0
         unique_ips = self.df['client_ip'].nunique() if 'client_ip' in self.df.columns else 0
         
         return {
@@ -199,21 +482,28 @@ class SquidLogAnalyzer:
         if excluded is None:
             excluded = []
         
-        if self.df.empty or 'user' not in self.df.columns:
+        # Determinar qué columna usar para el usuario
+        user_column = None
+        for col in ['username', 'user']:
+            if col in self.df.columns:
+                user_column = col
+                break
+        
+        if self.df.empty or not user_column:
             # Devolver un DataFrame vacío con las columnas esperadas
             return pd.DataFrame(columns=['user', 'traffic', 'requests', 'traffic_readable'])
         
         # Filtrar usuarios excluidos y nulos
         filtered_df = self.df[
-            (~self.df['user'].isin(excluded)) & 
-            (self.df['user'].notna())
+            (~self.df[user_column].isin(excluded)) & 
+            (self.df[user_column].notna())
         ]
         
         if filtered_df.empty:
             return pd.DataFrame(columns=['user', 'traffic', 'requests', 'traffic_readable'])
         
         # Agrupar por usuario y sumar el tráfico
-        user_traffic = filtered_df.groupby('user').agg({
+        user_traffic = filtered_df.groupby(user_column).agg({
             'size': 'sum',
             'url': 'count'
         }).reset_index()
@@ -315,33 +605,17 @@ class SquidLogAnalyzer:
         if self.df is None:
             self.to_dataframe()
         
+        if 'status_code' not in self.df.columns:
+            return pd.DataFrame(columns=['status_code', 'count', 'description'])
+        
         status_counts = self.df['status_code'].value_counts().reset_index()
         status_counts.columns = ['status_code', 'count']
         
         # Añadir descripción de los códigos
-        status_descriptions = {
-            200: 'OK',
-            201: 'Created',
-            204: 'No Content',
-            206: 'Partial Content',
-            301: 'Moved Permanently',
-            302: 'Found',
-            304: 'Not Modified',
-            307: 'Temporary Redirect',
-            400: 'Bad Request',
-            401: 'Unauthorized',
-            403: 'Forbidden',
-            404: 'Not Found',
-            407: 'Proxy Authentication Required',
-            408: 'Request Timeout',
-            500: 'Internal Server Error',
-            502: 'Bad Gateway',
-            503: 'Service Unavailable',
-            504: 'Gateway Timeout'
-        }
+        from config import HTTP_CODE_DESCRIPTIONS
         
         status_counts['description'] = status_counts['status_code'].map(
-            lambda x: status_descriptions.get(x, 'Unknown')
+            lambda x: HTTP_CODE_DESCRIPTIONS.get(x, 'Unknown')
         )
         
         return status_counts
@@ -361,44 +635,58 @@ class SquidLogAnalyzer:
         if self.df is None:
             self.to_dataframe()
         
+        # Determinar qué columna usar para el usuario
+        user_column = None
+        for col in ['username', 'user']:
+            if col in self.df.columns:
+                user_column = col
+                break
+        
+        if not user_column:
+            return None
+        
         # Filtrar por usuario
-        user_df = self.df[self.df['user'] == username]
+        user_df = self.df[self.df[user_column] == username]
         
         if user_df.empty:
             return None
         
         # Estadísticas básicas
         total_requests = len(user_df)
-        total_traffic = user_df['size'].sum()
+        total_traffic = user_df['size'].sum() if 'size' in user_df.columns else 0
         traffic_readable = self._bytes_to_human_readable(total_traffic)
         
         # Dominios más visitados
-        top_domains = user_df['domain'].value_counts().head(10).reset_index()
+        top_domains = user_df['domain'].value_counts().head(10).reset_index() if 'domain' in user_df.columns else pd.DataFrame(columns=['domain', 'count'])
         top_domains.columns = ['domain', 'visits']
         
         # Códigos de estado
-        status_codes = user_df['status_code'].value_counts().reset_index()
+        status_codes = user_df['status_code'].value_counts().reset_index() if 'status_code' in user_df.columns else pd.DataFrame(columns=['status_code', 'count'])
         status_codes.columns = ['status_code', 'count']
         
         # Tipos de contenido
-        content_types = user_df['content_type'].value_counts().reset_index()
+        content_types = user_df['content_type'].value_counts().reset_index() if 'content_type' in user_df.columns else pd.DataFrame(columns=['content_type', 'count'])
         content_types.columns = ['content_type', 'count']
         
         # URLs más visitadas
-        top_urls = user_df['url'].value_counts().head(10).reset_index()
+        top_urls = user_df['url'].value_counts().head(10).reset_index() if 'url' in user_df.columns else pd.DataFrame(columns=['url', 'count'])
         top_urls.columns = ['url', 'visits']
         
         # Tamaño promedio de respuesta
-        avg_response_size = user_df['size'].mean()
+        avg_response_size = user_df['size'].mean() if 'size' in user_df.columns else 0
         avg_response_readable = self._bytes_to_human_readable(avg_response_size)
         
         # Porcentaje de solicitudes exitosas (códigos 2xx)
-        success_requests = len(user_df[user_df['status_code'].between(200, 299)])
-        success_rate = (success_requests / total_requests) * 100 if total_requests > 0 else 0
-        
-        # Porcentaje de solicitudes fallidas (códigos 4xx, 5xx)
-        error_requests = len(user_df[user_df['status_code'] >= 400])
-        error_rate = (error_requests / total_requests) * 100 if total_requests > 0 else 0
+        if 'status_code' in user_df.columns:
+            success_requests = len(user_df[user_df['status_code'].between(200, 299)])
+            success_rate = (success_requests / total_requests) * 100 if total_requests > 0 else 0
+            
+            # Porcentaje de solicitudes fallidas (códigos 4xx, 5xx)
+            error_requests = len(user_df[user_df['status_code'] >= 400])
+            error_rate = (error_requests / total_requests) * 100 if total_requests > 0 else 0
+        else:
+            success_rate = 0
+            error_rate = 0
         
         return {
             'username': username,
@@ -417,14 +705,53 @@ class SquidLogAnalyzer:
     
     def get_date_range(self):
         """Obtiene el rango de fechas en el log."""
+        if self.df is None:
+            self.to_dataframe()
+        
+        if 'timestamp' in self.df.columns and not self.df.empty:
+            try:
+                timestamps = pd.to_datetime(self.df['timestamp'])
+                return timestamps.min(), timestamps.max()
+            except:
+                pass
+        
+        # Si no hay timestamps válidos, devolver la fecha actual
         now = datetime.now()
         return now, now
 
     def filter_by_date(self, start_date=None, end_date=None):
         """Filtra los datos por rango de fechas."""
-        # Como no tenemos timestamp real, simplemente devolvemos una copia del analizador
-        filtered_analyzer = SquidLogAnalyzer(self.log_path)
-        filtered_analyzer.df = self.df.copy() if self.df is not None else None
+        if self.df is None:
+            self.to_dataframe()
+        
+        filtered_analyzer = SquidLogAnalyzer(self.log_path, self.log_format)
+        
+        if 'timestamp' not in self.df.columns or self.df.empty:
+            filtered_analyzer.df = self.df.copy() if self.df is not None else None
+            return filtered_analyzer
+        
+        try:
+            # Convertir a datetime si no lo son
+            if start_date and not isinstance(start_date, datetime):
+                start_date = pd.to_datetime(start_date)
+            if end_date and not isinstance(end_date, datetime):
+                end_date = pd.to_datetime(end_date)
+            
+            # Convertir la columna timestamp a datetime
+            df_copy = self.df.copy()
+            df_copy['timestamp'] = pd.to_datetime(df_copy['timestamp'])
+            
+            # Aplicar filtros
+            if start_date:
+                df_copy = df_copy[df_copy['timestamp'] >= start_date]
+            if end_date:
+                df_copy = df_copy[df_copy['timestamp'] <= end_date]
+            
+            filtered_analyzer.df = df_copy
+        except Exception as e:
+            logger.error(f"Error al filtrar por fecha: {e}")
+            filtered_analyzer.df = self.df.copy()
+        
         return filtered_analyzer
     
     def _bytes_to_human_readable(self, bytes_value):
@@ -450,3 +777,9 @@ class SquidLogAnalyzer:
         print(f"Número de filas: {len(self.df)}")
         print("\nPrimeras 5 filas:")
         print(self.df.head())
+        
+        # Información adicional sobre el formato detectado
+        if hasattr(self, 'detected_format'):
+            print(f"\nFormato detectado: {self.detected_format}")
+        else:
+            print(f"\nFormato configurado: {self.log_format}")
